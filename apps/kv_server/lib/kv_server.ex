@@ -1,6 +1,8 @@
 defmodule KVServer do
   use Application
+  require Logger
 
+  @doc false
   # See http://elixir-lang.org/docs/stable/elixir/Application.html
   # for more information on OTP Applications
   def start(_type, _args) do
@@ -8,8 +10,8 @@ defmodule KVServer do
 
     # Define workers and child supervisors to be supervised
     children = [
-      # Starts a worker by calling: KVServer.Worker.start_link(arg1, arg2, arg3)
-       worker(Task, [KVServer, :accept, [4040]]),
+      supervisor(Task.Supervisor, [[name: KVServer.TaskSupervisor]]),
+      worker(Task, [KVServer, :accept, [4040]])
     ]
 
     # See http://elixir-lang.org/docs/stable/elixir/Supervisor.html
@@ -18,8 +20,9 @@ defmodule KVServer do
     Supervisor.start_link(children, opts)
   end
 
-  require Logger
-
+  @doc """
+  Starts accepting connection on the given `port`
+  """
   def accept(port) do
     # The options below mean:
     #
@@ -34,9 +37,10 @@ defmodule KVServer do
     loop_acceptor(socket)
   end
 
-  def loop_acceptor(socket) do
+  defp loop_acceptor(socket) do
     {:ok, client} = :gen_tcp.accept(socket)
-    serve(client)
+    {:ok, pid} = Task.Supervisor.start_child(KVServer.TaskSupervisor, fn -> serve(client) end)
+    :ok = :gen_tcp.controlling_process(client, pid)
     loop_acceptor(socket)
   end
 
